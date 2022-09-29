@@ -81,31 +81,33 @@ info(f'TEST_TO_SEND = {TEST_TO_SEND}')
 # event
 # event Transfer(address indexed from, address indexed to, uint256 value)
 ABI = """
-{
-   "anonymous":false,
-   "inputs":[
-      {
-         "indexed":true,
-         "internalType":"address",
-         "name":"from",
-         "type":"address"
-      },
-      {
-         "indexed":true,
-         "internalType":"address",
-         "name":"to",
-         "type":"address"
-      },
-      {
-         "indexed":false,
-         "internalType":"uint256",
-         "name":"value",
-         "type":"uint256"
-      }
-   ],
-   "name":"Transfer",
-   "type":"event"
-}
+[
+   {
+      "anonymous":false,
+      "inputs":[
+         {
+            "indexed":true,
+            "internalType":"address",
+            "name":"from",
+            "type":"address"
+         },
+         {
+            "indexed":true,
+            "internalType":"address",
+            "name":"to",
+            "type":"address"
+         },
+         {
+            "indexed":false,
+            "internalType":"uint256",
+            "name":"value",
+            "type":"uint256"
+         }
+      ],
+      "name":"Transfer",
+      "type":"event"
+   }
+]
 """
 
 plg_w3 = Web3(HTTPProvider(ZKBOB_RPC))

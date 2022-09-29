@@ -24,7 +24,7 @@ This service is monitoring withdrawals from zkBOB pool and reward BOB tokens rec
 3. Run the service 
 
    ```bash
-   docker run -ti --rm -v $(pwd)/db:/db --env-file .env ghcr.io/zkBob/zkbob-faucet:latest 
+   docker run -ti --rm -v $(pwd)/db:/db --env-file .env ghcr.io/zkbob/zkbob-faucet:latest 
    ```
    
    _Note:_ the source mount point after the key `-v` is the directory created on the step 2. The destination mount point is the directory specified in the variable `JSON_DB_DIR`.

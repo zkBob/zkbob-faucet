@@ -2,7 +2,7 @@ version: "3.9"
 
 services:
   faucet:
-    image: ghcr.io/zkBob/zkbob-faucet:${RELAYER_IMAGE:-latest}
+    image: ghcr.io/zkbob/zkbob-faucet:${RELAYER_IMAGE:-latest}
     container_name: zkbob-faucet
     environment:
         # faucet account's private key must be here (without 0x)
