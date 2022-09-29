@@ -22,6 +22,7 @@ while True:
 
     BOB_TOKEN = getenv('BOB_TOKEN', '0xB0B195aEFA3650A6908f15CdaC7D92F8a5791B0B')
     POOL_CONTRACT = getenv('POOL_CONTRACT', '0x72e6B59D4a90ab232e55D4BB7ed2dD17494D62fB')
+    WITHDRAWAL_THRESHOLD = float(getenv('WITHDRAWAL_THRESHOLD', 10))
 
     FAUCET_PRIVKEY = getenv('FAUCET_PRIVKEY', None)
 
@@ -61,6 +62,7 @@ info(f'ZKBOB_RPC = {ZKBOB_RPC}')
 info(f'HISTORY_BLOCK_RANGE = {HISTORY_BLOCK_RANGE}')
 info(f'BOB_TOKEN = {BOB_TOKEN}')
 info(f'POOL_CONTRACT = {POOL_CONTRACT}')
+info(f'WITHDRAWAL_THRESHOLD = {WITHDRAWAL_THRESHOLD}')
 info(f'FAUCET_PRIVKEY = ...')
 info(f'GAS_PRICE = {GAS_PRICE}')
 info(f'HISTORICAL_BASE_FEE_DEPTH = {HISTORICAL_BASE_FEE_DEPTH}')
@@ -161,7 +163,9 @@ while True:
 
     for log in bob_logs:
         recipient = bob_token.events.Transfer().processLog(log).args.to
-        recipients.add(recipient)
+        value = bob_token.events.Transfer().processLog(log).args.value
+        if value >= Web3.toWei(WITHDRAWAL_THRESHOLD, "ether"):
+            recipients.add(recipient)
     info(f'Identified {len(recipients)} tokens recipients from BOB token events')
 
     try:

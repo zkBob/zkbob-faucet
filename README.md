@@ -57,6 +57,7 @@ The following environment variables may be used to configure the faucet behavior
 2. `HISTORY_BLOCK_RANGE` - depends on the RPC endpoints - how deep in the block history transactions logs can be requested. **Default:** `10000`.
 3. `BOB_TOKEN` - an address of the BOB token contract. **Default:** `0xB0B195aEFA3650A6908f15CdaC7D92F8a5791B0B`.
 4. `POOL_CONTRACT` - an address of the zkBOB pool contract. **Default:** `0xB0B195aEFA3650A6908f15CdaC7D92F8a5791B0B`.
+5. `WITHDRAWAL_THRESHOLD` - min amount of tokens which should be withdrawn to apply for reward. **Default:** `10`.
 6. `FAUCET_PRIVKEY` - a private key of an account holding xdai to reward. **No default value!**.
 7. `GAS_PRICE` - the gas price (in gwei) the faucet uses for reward transactions (pre-EIP1559 transactions). `-1` means to use EIP1559 transactions. **Default:** `-1`.
 8. `HISTORICAL_BASE_FEE_DEPTH` - number of recent blocks to estimate the base fee as per gas (EIP1559 related). **Default:** `20`.
