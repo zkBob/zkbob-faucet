@@ -33,7 +33,7 @@ while True:
 
     GAS_LIMIT = int(getenv('GAS_LIMIT', 30000))
     REWARD = float(getenv('REWARD', 0.1))
-    POLLING_INTERVAL = getenv('POLLING_INTERVAL', 60)
+    POLLING_INTERVAL = int(getenv('POLLING_INTERVAL', 60))
 
     #INITIAL_START_BLOCK = 33709535
     INITIAL_START_BLOCK = int(getenv('INITIAL_START_BLOCK', 0))
