@@ -488,11 +488,13 @@ while True:
             info(f'starting nonce: {nonce}')
 
             for recipient in endowing:
-                str_nonce = str(nonce)
                 # if exists a record in the gas price history log it means that the faucet
                 # already tried to send a transaction with the same nonce
                 # in order to avoid getting 'replacement transaction underpriced' RPC error
                 # it is necessary to adjust the estimated gas price
+                tx_max_gas_price = max_gas_price
+                tx_recommended_priority_fee = recommended_priority_fee
+                str_nonce = str(nonce)
                 if str_nonce in nonces:
                     tx_max_gas_price, tx_recommended_priority_fee = adjust_gas_price([max_gas_price, recommended_priority_fee], 
                                                                                     nonces[str_nonce])
