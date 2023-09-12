@@ -33,6 +33,7 @@ while True:
     BOB_TOKEN = getenv('BOB_TOKEN', '0xB0B195aEFA3650A6908f15CdaC7D92F8a5791B0B')
     POOL_CONTRACT = getenv('POOL_CONTRACT', '0x72e6B59D4a90ab232e55D4BB7ed2dD17494D62fB')
     WITHDRAWAL_THRESHOLD = float(getenv('WITHDRAWAL_THRESHOLD', 10))
+    BALANCE_THRESHOLD = float(getenv('BALANCE_THRESHOLD', 0))
 
     FAUCET_PRIVKEY = getenv('FAUCET_PRIVKEY', None)
 
@@ -143,12 +144,13 @@ bob_token = plg_w3.eth.contract(abi = ABI, address = BOB_TOKEN)
 event_filter = bob_token.events.Transfer.build_filter()
 event_filter.indexed_args[0].match_single(POOL_CONTRACT)
 token = {
+    'w3': plg_w3,
     'cnt': bob_token,
     'efilter': event_filter,
-    'handler': bob_token.events.Transfer().processLog
+    'handler': bob_token.events.Transfer().process_log
 }
 
-faucet = Account.privateKeyToAccount(FAUCET_PRIVKEY)
+faucet = Account.from_key(FAUCET_PRIVKEY)
 
 sending_tested = False
 
@@ -211,7 +213,7 @@ def make_web3_call(func, *args, **kwargs):
 # Default limit finishes by the last finalized block and starts
 # HISTORY_BLOCK_RANGE block lower
 def get_observation_range(_previous_last_block):
-    last_block = make_web3_call(plg_w3.eth.getBlock, 'latest').number
+    last_block = make_web3_call(plg_w3.eth.get_block, 'latest').number
     last_block = last_block - FINALIZATION_INTERVAL
     if _previous_last_block > last_block:
         BaseException("Last block received from RPC is less than last revisited block")
@@ -236,7 +238,7 @@ def process_event(_token, _event):
     pl = _token['handler'](_event)
     recipient = pl.args['to']
     value = pl.args['value']
-    if value >= Web3.toWei(WITHDRAWAL_THRESHOLD, "ether"):
+    if value >= Web3.to_wei(WITHDRAWAL_THRESHOLD, "ether"):
         return recipient
     else:
         return None
@@ -246,7 +248,7 @@ def process_event(_token, _event):
 def get_recipients(_token, _from_block, _to_block):
     event_name = _token['efilter'].event_abi['name']
     info(f'Looking for {event_name} events on BOB token from {_from_block} to {_to_block}')
-    events = make_web3_call(_token['cnt'].web3.eth.getLogs, {'fromBlock': _from_block, 
+    events = make_web3_call(_token['w3'].eth.get_logs, {'fromBlock': _from_block, 
                                                              'toBlock': _to_block, 
                                                              'address': _token['efilter'].address, 
                                                              'topics': _token['efilter'].topics})
@@ -282,6 +284,7 @@ def revisit_previous_rewards(handled_recipients, observation_range):
     info(f'Identified {len(accounts_to_check)} candidates to check sent rewards')
 
     candidates_for_retry = set()
+    rewarded = set()
     for account in accounts_to_check:
         reward_sent = False
         # Check all the transactions made for the account
@@ -299,14 +302,17 @@ def revisit_previous_rewards(handled_recipients, observation_range):
                 info(f'Tx {txhash} mined sucessfully')
                 if rcpt.blockNumber:
                     reward_sent = True
+                    rewarded.add(Web3.to_checksum_address(account))
         if not reward_sent:
-            candidates_for_retry.add(Web3.toChecksumAddress(account))
+            candidates_for_retry.add(Web3.to_checksum_address(account))
     info(f'Identified {len(candidates_for_retry)} accounts to re-send rewards')
             
-    return candidates_for_retry
+    return candidates_for_retry, rewarded
 
 # Filters out recipients to be rewarded
 def soap_recipients(_recipients, _handled_recipients, _observation_range):
+    global sending_tested
+
     # Get a list of recipients which were handled
     # recently - not deeper than BLOCKS_TO_WAIT_BEFORE_RETRY 
     handled_recently = set()
@@ -325,7 +331,7 @@ def soap_recipients(_recipients, _handled_recipients, _observation_range):
     endowing = set()
     # Special case to add the facet address as the reward recipient to test transactions sending
     if TEST_TO_SEND and not sending_tested:
-        endowing.append(faucet.address)
+        endowing.add(faucet.address)
         info(f'activated testmode to send a transaction')
         sending_tested = True
 
@@ -342,7 +348,7 @@ def soap_recipients(_recipients, _handled_recipients, _observation_range):
         # the address was not found in the cache, request the RPC provider
         # The last block is used to make sure that RPC provider is synchronized: doesn't
         # outdated provide data 
-        code = make_web3_call(plg_w3.eth.getCode, recipient, _observation_range[1])
+        code = make_web3_call(plg_w3.eth.get_code, recipient, _observation_range[1])
         if code != b'':
             contracts[recipient] = True
             contracts_cache_updated = True
@@ -355,8 +361,8 @@ def soap_recipients(_recipients, _handled_recipients, _observation_range):
         # check that the recipient's balance is zero
         # The last block is used to make sure that RPC provider is synchronized: doesn't
         # outdated provide data 
-        balance = make_web3_call(plg_w3.eth.getBalance, recipient, _observation_range[1])
-        if balance == 0 or recipient == faucet.address:
+        balance = make_web3_call(plg_w3.eth.get_balance, recipient, _observation_range[1])
+        if balance <= Web3.to_wei(BALANCE_THRESHOLD, 'gwei') or recipient == faucet.address:
             info(f'{recipient} balance is zero')
             endowing.add(recipient)
         else:
@@ -376,26 +382,26 @@ def estimate_gas_price():
         # For Type 2 transactions
         
         # It makes sense to look at very last block rather than finalized block
-        last_block = make_web3_call(plg_w3.eth.getBlock, 'latest').number
+        last_block = make_web3_call(plg_w3.eth.get_block, 'latest').number
 
         fee_hist = make_web3_call(plg_w3.eth.fee_history, HISTORICAL_BASE_FEE_DEPTH, last_block, [5, 30])
 
         # Predict base fee by getting base fees of recent blocks
         base_fee_hist = fee_hist.baseFeePerGas
         historical_base_fee = max(int(median(base_fee_hist)), int(mean(base_fee_hist)))
-        info(f'Base fee based on historical data: {Web3.fromWei(historical_base_fee, "wei")}')
+        info(f'Base fee based on historical data: {Web3.from_wei(historical_base_fee, "wei")}')
 
         # Predict priority fee by getting mean of priority fees from every recent block
         priority_fee = [ mean(i) for i in fee_hist.reward ]
         recommended_priority_fee = min(int(mean(priority_fee)), int(median(priority_fee)))
 
         max_gas_price = min(int(historical_base_fee * BASE_FEE_RATIO) + recommended_priority_fee, 
-                            Web3.toWei(FEE_LIMIT, 'gwei'))
-        info(f'Suggested max fee per gas: {Web3.fromWei(max_gas_price, "gwei")}')
-        info(f'Suggested priority fee per gas: {Web3.fromWei(recommended_priority_fee, "gwei")}')
+                            Web3.to_wei(FEE_LIMIT, 'gwei'))
+        info(f'Suggested max fee per gas: {Web3.from_wei(max_gas_price, "gwei")}')
+        info(f'Suggested priority fee per gas: {Web3.from_wei(recommended_priority_fee, "gwei")}')
     else:
         # For legacy transactions
-        max_gas_price = Web3.toWei(GAS_PRICE, 'gwei')
+        max_gas_price = Web3.to_wei(GAS_PRICE, 'gwei')
         recommended_priority_fee = 0
         
     return max_gas_price, recommended_priority_fee
@@ -406,7 +412,7 @@ def estimate_gas_price():
 def adjust_gas_price(_current_gas_price, _previous_gas_price):
     increased_max_gas_price = int(_previous_gas_price[0] * 1.1) + 1
     max_gas_price = min(max(_current_gas_price[0], increased_max_gas_price),
-                        Web3.toWei(FEE_LIMIT, 'gwei'))
+                        Web3.to_wei(FEE_LIMIT, 'gwei'))
     if _previous_gas_price[1] != 0:
         increased_recommended_priority_fee = int(_previous_gas_price[1] * 1.1) + 1
         recommended_priority_fee = max(_current_gas_price[1], 
@@ -419,7 +425,7 @@ def adjust_gas_price(_current_gas_price, _previous_gas_price):
 # Tries to handle RPC responses caused by traffic conjections or synchronization issues
 def sent_raw_transaction(_rawtx):
     try:
-        sent_tx_hash = make_web3_call_with_exceptions(plg_w3.eth.sendRawTransaction, [ValueError], _rawtx.rawTransaction)
+        sent_tx_hash = make_web3_call_with_exceptions(plg_w3.eth.send_raw_transaction, [ValueError], _rawtx.rawTransaction)
     except ValueError as ve:
         ve_as_str = str(ve)
         try:
@@ -441,8 +447,8 @@ def sent_raw_transaction(_rawtx):
                                    'INTERNAL_ERROR: could not replace existing tx']:
                 raise ve
             info(f'{recipient} marked as handled to evaluate reward re-sending later')
-            return Web3.toHex(_rawtx.hash)
-    str_hash = Web3.toHex(sent_tx_hash)
+            return Web3.to_hex(_rawtx.hash)
+    str_hash = Web3.to_hex(sent_tx_hash)
     info(f'{recipient} rewarded by {str_hash}')
     return str_hash
 
@@ -463,7 +469,9 @@ while True:
 
     recipients = get_recipients(token, observation_range[0], observation_range[1])
 
-    recipients.update(revisit_previous_rewards(handled_recipients, observation_range))
+    to_add, to_remove = revisit_previous_rewards(handled_recipients, observation_range)
+    recipients.update(to_add)
+    recipients.difference_update(to_remove)
 
     endowing = soap_recipients(recipients, handled_recipients, observation_range)
 
@@ -471,7 +479,7 @@ while True:
     if len(endowing) > 0:
         # Get the current balance of the faucet to avoid attempts
         # to send rewards when the faucet has no funds
-        faucet_balance = make_web3_call(plg_w3.eth.getBalance, faucet.address)
+        faucet_balance = make_web3_call(plg_w3.eth.get_balance, faucet.address)
         info(f'faucet balance: {faucet_balance}')
 
         max_gas_price, recommended_priority_fee = estimate_gas_price()
@@ -480,7 +488,7 @@ while True:
         if faucet_balance > len(endowing) * GAS_LIMIT * max_gas_price:
             update_for_handled_recipients = {}
 
-            nonce = make_web3_call(plg_w3.eth.getTransactionCount, faucet.address)
+            nonce = make_web3_call(plg_w3.eth.get_transaction_count, faucet.address)
             # Since a new nonce received remove old records from the gas prices history log
             for existing_nonce in list(nonces):
                 if int(existing_nonce) < nonce:
@@ -504,7 +512,7 @@ while True:
                     'gas': GAS_LIMIT,
                     'data': b'Rewarded for zkBOB withdrawal',
                     'chainId': plg_chainId,
-                    'value': Web3.toWei(REWARD, 'ether'),
+                    'value': Web3.to_wei(REWARD, 'ether'),
                     'to': recipient,
                 }
                 if GAS_PRICE < 0:
@@ -513,7 +521,7 @@ while True:
                 else:
                     tx['gasPrice'] = tx_max_gas_price
                     
-                rawtx = faucet.signTransaction(tx)
+                rawtx = faucet.sign_transaction(tx)
                 sent_tx_hash = sent_raw_transaction(rawtx)
                 # Record the attempt to send the reward
                 update_for_handled_recipients[recipient] = sent_tx_hash
